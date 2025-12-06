@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { SavedInspection, User } from '../types';
-import { getUserInspections } from '../services/storage';
+import { SavedInspection, User } from '../../types';
+import { getInspections } from '../../services/storage';
 import { Clock, Edit, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react';
 
 interface Props {
@@ -16,8 +16,11 @@ const TabHistory: React.FC<Props> = ({ currentUser, onEdit }) => {
   const fetchInspections = async () => {
     setLoading(true);
     try {
-      const data = await getUserInspections(currentUser.username);
-      setInspections(data);
+      const allInspections = await getInspections();
+      const userInspections = allInspections.filter(
+        (inspection) => inspection.savedBy === currentUser.username
+      );
+      setInspections(userInspections);
     } finally {
       setLoading(false);
     }
