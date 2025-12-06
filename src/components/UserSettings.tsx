@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { User } from '../types';
-import { changePassword } from '../services/storage';
+import { User } from '../../types';
+import { changePassword } from '../../services/storage';
 import { Lock, X, Save } from 'lucide-react';
 
 interface Props {
@@ -24,13 +24,13 @@ const UserSettings: React.FC<Props> = ({ user, onClose }) => {
       return;
     }
 
-    if (newPassword.length < 4) {
-      setMessage({ type: 'error', text: 'A nova senha deve ter pelo menos 4 caracteres.' });
+    if (newPassword.length < 6) {
+      setMessage({ type: 'error', text: 'A nova senha deve ter pelo menos 6 caracteres.' });
       return;
     }
 
     setLoading(true);
-    const result = await changePassword(user, oldPassword, newPassword);
+    const result = await changePassword(newPassword);
     setLoading(false);
     
     if (result.success) {
@@ -59,17 +59,6 @@ const UserSettings: React.FC<Props> = ({ user, onClose }) => {
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div className="bg-blue-50 p-3 rounded-lg text-sm text-blue-800 mb-4">
             Olá, <strong>{user.name}</strong>. Para sua segurança, todas as alterações de senha são registradas no sistema.
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Senha Atual</label>
-            <input
-              type="password"
-              required
-              value={oldPassword}
-              onChange={(e) => setOldPassword(e.target.value)}
-              className="w-full p-2 border border-gray-300 rounded-lg focus:ring-brand-500 focus:border-brand-500"
-            />
           </div>
 
           <div>

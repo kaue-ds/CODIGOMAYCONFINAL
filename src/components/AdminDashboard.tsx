@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { User, SavedInspection, SystemLog, UserRole } from '../types';
-import { getInspections, getUsers, getLogs, createUser, deleteUser, deleteAllUsersComplete, deleteInspection, updateUserStatus, updateUserQuota } from '../services/storage';
+import { User, SavedInspection, SystemLog, UserRole } from '../../types';
+import { getInspections, getUsers, getLogs, createUser, deleteUser, deleteAllUsersComplete, deleteInspection, updateUserStatus, updateUserQuota } from '../../services/storage';
 import { FileText, Users, Activity, Trash2, UserPlus, Download, LogOut, Search, Eye, Power, ShieldCheck, Shield, Lock, Copy, ChevronDown, ChevronRight, CornerDownRight, AlertTriangle, Edit, AlertOctagon, RefreshCw, Key } from 'lucide-react';
 
 declare var html2pdf: any;
@@ -107,15 +107,12 @@ const AdminDashboard: React.FC<Props> = ({ currentUser, onLogout, onEdit }) => {
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    const newUser: User = {
-      id: crypto.randomUUID(),
+    const newUser = {
       username: newUsername,
-      password: newPassword,
+      password_provided: newPassword,
       name: newName,
       role: newRole,
-      isActive: true,
       maxEmployees: newRole === 'admin' ? newMaxEmployees : undefined,
-      createdBy: currentUser.id
     };
     
     setIsLoadingData(true);
@@ -298,13 +295,6 @@ const AdminDashboard: React.FC<Props> = ({ currentUser, onLogout, onEdit }) => {
         </td>
         <td className="p-4 text-sm font-bold text-black">{u.username}</td>
         <td className="p-4 text-sm text-gray-600">{u.name}</td>
-        
-        <td className="p-4 text-sm">
-          <div className="flex items-center gap-2">
-             <span className="font-mono bg-gray-100 px-2 py-0.5 rounded text-xs">{visiblePasswords[u.id] ? u.password : '••••••••'}</span>
-             <button onClick={() => togglePasswordVisibility(u.id)} className="text-gray-500 hover:text-black"><Eye className="w-3 h-3" /></button>
-          </div>
-        </td>
 
         <td className="p-4 text-sm">
           <div className="flex flex-col items-start">
@@ -483,7 +473,7 @@ const AdminDashboard: React.FC<Props> = ({ currentUser, onLogout, onEdit }) => {
             <div className="bg-white border border-black overflow-hidden shadow-sm">
               <table className="w-full text-left border-collapse">
                 <thead className="bg-black text-white border-b border-black">
-                  <tr><th className="p-4 font-bold text-xs uppercase w-32">Acesso</th><th className="p-4 font-bold text-xs uppercase">Usuário</th><th className="p-4 font-bold text-xs uppercase">Nome</th><th className="p-4 font-bold text-xs uppercase">Senha</th><th className="p-4 font-bold text-xs uppercase">Função</th><th className="p-4 font-bold text-xs uppercase">Criado Por</th><th className="p-4 font-bold text-xs uppercase text-right">Ações</th></tr>
+                  <tr><th className="p-4 font-bold text-xs uppercase w-32">Acesso</th><th className="p-4 font-bold text-xs uppercase">Usuário</th><th className="p-4 font-bold text-xs uppercase">Nome</th><th className="p-4 font-bold text-xs uppercase">Função</th><th className="p-4 font-bold text-xs uppercase">Criado Por</th><th className="p-4 font-bold text-xs uppercase text-right">Ações</th></tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {currentUser.role === 'super_admin' ? (
@@ -519,12 +509,6 @@ const AdminDashboard: React.FC<Props> = ({ currentUser, onLogout, onEdit }) => {
                                 </td>
                                 <td className="p-4 text-sm font-bold text-black">{admin.username}</td>
                                 <td className="p-4 text-sm text-gray-800 font-bold">{admin.name}</td>
-                                <td className="p-4 text-sm">
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-mono bg-white border border-gray-200 px-2 py-0.5 rounded text-xs">{visiblePasswords[admin.id] ? admin.password : '••••••••'}</span>
-                                    <button onClick={() => togglePasswordVisibility(admin.id)}><Eye className="w-3 h-3 text-gray-500" /></button>
-                                  </div>
-                                </td>
                                 <td className="p-4 text-sm">
                                   <div className="flex flex-col items-start">
                                       {isRogue ? <span className="bg-red-600 text-white px-2 py-1 text-[10px] font-bold uppercase flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> SUPER (FAKE)</span> : <span className="bg-black text-white px-2 py-1 text-[10px] font-bold uppercase shadow-sm">ADMIN</span>}

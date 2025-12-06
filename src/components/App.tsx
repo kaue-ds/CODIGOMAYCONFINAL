@@ -1,17 +1,17 @@
 
 import React, { useState, useEffect } from 'react';
 import { HashRouter } from 'react-router-dom';
-import { InspectionData, User, SavedInspection } from './types';
-import TabInitial from './components/TabInitial';
-import TabQuestionnaire from './components/TabQuestionnaire';
-import TabPhotos from './components/TabPhotos';
-import TabSave from './components/TabSave';
-import TabHistory from './components/TabHistory';
-import Login from './components/Login';
-import AdminDashboard from './components/AdminDashboard';
-import UserSettings from './components/UserSettings';
+import { InspectionData, User, SavedInspection } from '../../types';
+import TabInitial from './TabInitial';
+import TabQuestionnaire from './TabQuestionnaire';
+import TabPhotos from './TabPhotos';
+import TabSave from './TabSave';
+import TabHistory from './TabHistory';
+import Login from './Login';
+import AdminDashboard from './AdminDashboard';
+import UserSettings from './UserSettings';
 import { LayoutDashboard, ClipboardList, Camera, Save as SaveIcon, LogOut, History, Settings } from 'lucide-react';
-import { getCurrentUser, logoutUser, saveInspection } from './services/storage';
+import { getCurrentUser, logoutUser, saveInspection } from '../../services/storage';
 
 const INITIAL_DATA: InspectionData = {
   contractNumber: '',
@@ -44,11 +44,12 @@ function App() {
   const [showAdminDashboard, setShowAdminDashboard] = useState(true);
 
   useEffect(() => {
-    const user = getCurrentUser();
-    if (user) {
+    const fetchUser = async () => {
+      const user = await getCurrentUser();
       setCurrentUser(user);
-    }
-    setIsLoading(false);
+      setIsLoading(false);
+    };
+    fetchUser();
   }, []);
 
   const updateData = (field: keyof InspectionData, value: string) => {
@@ -106,8 +107,8 @@ function App() {
     setShowAdminDashboard(true); // Reset to dashboard on login
   };
 
-  const handleLogout = () => {
-    logoutUser();
+  const handleLogout = async () => {
+    await logoutUser();
     setCurrentUser(null);
     setData(INITIAL_DATA);
     setActiveTab(0);
