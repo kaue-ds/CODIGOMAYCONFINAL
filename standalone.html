@@ -1,0 +1,1080 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>A.B.M TRANSPORTADORA - Vistoria</title>
+    
+    <!-- Librerías Externas -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Configuración de Tailwind (Minimalista B&N) -->
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              brand: {
+                50: '#f9fafb',
+                100: '#f3f4f6',
+                200: '#e5e7eb',
+                300: '#d1d5db',
+                400: '#9ca3af',
+                500: '#6b7280',
+                600: '#000000', // Negro Primario
+                700: '#1f2937',
+                800: '#111827',
+                900: '#000000',
+              }
+            }
+          }
+        }
+      }
+    </script>
+
+    <!-- Estilos para ocultar scrollbar y ajustes móviles -->
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      body {overscroll-behavior-y: none;}
+      .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+      
+      /* Animação para Modal */
+      @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+      .animate-fade-in { animation: fadeIn 0.2s ease-out forwards; }
+    </style>
+
+    <!-- Mapa de Importaciones para React y Supabase -->
+    <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "lucide-react": "https://esm.sh/lucide-react@0.292.0",
+        "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2"
+      }
+    }
+    </script>
+</head>
+<body class="bg-white text-gray-900 h-screen overflow-hidden font-sans">
+    <div id="root" class="h-full"></div>
+
+    <!-- CÓDIGO DE LA APLICACIÓN -->
+    <script type="text/babel" data-type="module">
+      import React, { useState, useEffect, useRef } from 'react';
+      import { createRoot } from 'react-dom/client';
+      import { createClient } from '@supabase/supabase-js';
+      import { 
+        LayoutDashboard, ClipboardList, Camera, Save, LogOut, History, Settings, 
+        User, Lock, ShieldCheck, Mail, Hash, Truck, AlertCircle, Wand2, 
+        ThumbsUp, ThumbsDown, AlertTriangle, Slash, Fuel, Disc, Trash2, 
+        CheckCircle2, RefreshCw, PenTool, Eraser, FileText, Users, Activity, 
+        UserPlus, Download, Search, Eye, EyeOff, Key, X, CheckCircle, Calendar
+      } from 'lucide-react';
+
+      // --- 1. CONFIGURACIÓN Y CONSTANTES ---
+
+      // SUPABASE CONFIG
+      const supabaseUrl = 'https://oksolwnelvkddapbwulb.supabase.co';
+      const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9rc29sd25lbHZrZGRhcGJ3dWxiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ2ODA1MzQsImV4cCI6MjA4MDI1NjUzNH0.8NaM2JP63BxeLObVVabi77xntxHf6iiVccyXUVkevpw';
+      const supabase = createClient(supabaseUrl, supabaseKey);
+
+      const COMPANY_NAME = "A.B.M TRANSPORTADORA LTDA";
+
+      const INITIAL_CHECKLIST_ITEMS = [
+        "Antena", "Calota", "Cartão Code", "Chave de Roda", "Chave do veículo", 
+        "Documentos", "Estepe", "Extintor", "Macaco", "Rádio", 
+        "Rádio Central Multimídia", "Rodas de Ferro", "Rodas de liga leve", 
+        "Tapetes", "Triângulo"
+      ];
+
+      const MANDATORY_PHOTOS = [
+        'Frente', 'Lateral Dianteira Direita', 'Lateral Traseira Direita', 'Traseira',
+        'Lateral Traseira Esquerda', 'Lateral Dianteira Esquerda', 'Documentos', 'Painel'
+      ];
+
+      const INITIAL_DATA = {
+        contractNumber: '',
+        plate: '',
+        inspector: COMPANY_NAME, // Pre-fill company name
+        clientName: '',
+        clientEmail: '',
+        vehicle: '',
+        mileage: '',
+        removedItems: '',
+        observation: '',
+        collectionObservation: '',
+        checklist: {},
+        fuelLevel: 50,
+        tires: { fl: '', fr: '', rl: '', rr: '', spare: '' },
+        photos: {},
+        inspectorSignature: '',
+        clientSignature: ''
+      };
+
+      const SESSION_KEY = 'autocheck_session';
+
+      // --- 2. SERVICIOS (STORAGE & AUTH) ---
+
+      const loginUser = async (username, password) => {
+        try {
+          const { data, error } = await supabase
+            .from('users')
+            .select('data')
+            .eq('data->>username', username)
+            .single();
+
+          if (error || !data) {
+            // Admin Fallback Hardcoded
+            if (username === 'MayconD' && password === '24042017') {
+              const admin = { id: 'admin-1', username: 'MayconD', password: '24042017', role: 'admin', name: 'Administrador Principal' };
+              await createUser(admin, admin); 
+              localStorage.setItem(SESSION_KEY, JSON.stringify(admin));
+              return admin;
+            }
+            return null;
+          }
+
+          const user = data.data;
+          if (user.password === password) {
+            localStorage.setItem(SESSION_KEY, JSON.stringify(user));
+            await addLog(user.username, 'LOGIN', 'Usuário entrou no sistema (Online)');
+            return user;
+          }
+        } catch (err) {
+          console.error("Login error", err);
+        }
+        return null;
+      };
+
+      const logoutUser = () => {
+        const session = getCurrentUser();
+        if (session) addLog(session.username, 'LOGOUT', 'Usuário saiu do sistema');
+        localStorage.removeItem(SESSION_KEY);
+      };
+
+      const getCurrentUser = () => {
+        const session = localStorage.getItem(SESSION_KEY);
+        return session ? JSON.parse(session) : null;
+      };
+
+      const changePassword = async (user, oldPass, newPass) => {
+        try {
+          const { data: userData, error } = await supabase.from('users').select('*').eq('id', user.id).single();
+          if (error || !userData) return { success: false, message: 'Usuário não encontrado.' };
+
+          const currentUserData = userData.data;
+          if (currentUserData.password !== oldPass) return { success: false, message: 'Senha atual incorreta.' };
+
+          const updatedUser = { ...currentUserData, password: newPass };
+          const { error: updateError } = await supabase.from('users').update({ data: updatedUser }).eq('id', user.id);
+          if (updateError) throw updateError;
+
+          const currentSession = getCurrentUser();
+          if (currentSession && currentSession.id === user.id) {
+            currentSession.password = newPass;
+            localStorage.setItem(SESSION_KEY, JSON.stringify(currentSession));
+          }
+
+          await addLog(user.username, 'ALTERAR_SENHA', 'Usuário alterou sua própria senha');
+          return { success: true, message: 'Senha alterada com sucesso!' };
+        } catch (e) {
+          return { success: false, message: 'Erro de conexão: ' + e.message };
+        }
+      };
+
+      const saveInspection = async (data, user) => {
+        // 1. Save locally FIRST (Backup)
+        try {
+          const localKey = `backup_insp_${data.id || 'new'}`;
+          localStorage.setItem(localKey, JSON.stringify({...data, savedBy: user.username, date: new Date().toISOString()}));
+        } catch(e) { console.error("Local backup failed", e); }
+
+        // 2. Try Online
+        try {
+          if (data.id) {
+            const originalDate = new Date(data.date || new Date().toISOString());
+            const diffHours = (new Date().getTime() - originalDate.getTime()) / (1000 * 60 * 60);
+            if (diffHours > 1) throw new Error("Tempo limite de edição (1 hora) expirado.");
+          }
+
+          const id = data.id || crypto.randomUUID();
+          const date = data.date || new Date().toISOString();
+          
+          const inspectionToSave = { ...data, id, date, savedBy: user.username };
+
+          const { error } = await supabase.from('inspections').upsert({
+            id: id,
+            data: inspectionToSave,
+            created_at: date
+          });
+
+          if (error) throw error;
+          await addLog(user.username, data.id ? 'VISTORIA_ATUALIZADA' : 'VISTORIA_SALVA', `Vistoria placa ${data.plate}`);
+          
+          // Clear backup on success
+          localStorage.removeItem(`backup_insp_${id}`);
+          
+          return inspectionToSave;
+        } catch (e) {
+          throw new Error(e.message || "Erro ao salvar na nuvem.");
+        }
+      };
+
+      const getInspections = async () => {
+        try {
+          const { data, error } = await supabase.from('inspections').select('data').order('created_at', { ascending: false });
+          if (error) throw error;
+          return data.map(row => row.data);
+        } catch (e) { return []; }
+      };
+
+      const getUserInspections = async (username) => {
+        try {
+          const { data, error } = await supabase.from('inspections').select('data').eq('data->>savedBy', username).order('created_at', { ascending: false });
+          if (error) throw error;
+          return data.map(row => row.data);
+        } catch (e) { return []; }
+      };
+
+      const deleteInspection = async (adminUser, inspectionId) => {
+        if (adminUser.role !== 'admin') return false;
+        try {
+          const { error } = await supabase.from('inspections').delete().eq('id', inspectionId);
+          if (error) throw error;
+          await addLog(adminUser.username, 'DELETAR_VISTORIA', `Deletou vistoria ID: ${inspectionId.substring(0,8)}`);
+          return true;
+        } catch (e) { return false; }
+      };
+
+      const getUsers = async () => {
+        try {
+          const { data, error } = await supabase.from('users').select('data');
+          if (error) throw error;
+          return data.map(row => row.data);
+        } catch (e) { return []; }
+      };
+
+      const createUser = async (adminUser, newUser) => {
+        if (adminUser.role !== 'admin' && adminUser.id !== newUser.id) return false;
+        try {
+          const { data: existing } = await supabase.from('users').select('id').eq('data->>username', newUser.username).single();
+          if (existing) return false;
+
+          const { error } = await supabase.from('users').insert({ id: newUser.id, data: newUser });
+          if (error) throw error;
+
+          if (adminUser.id !== newUser.id) await addLog(adminUser.username, 'CRIAR_USUARIO', `Criou usuário: ${newUser.username}`);
+          return true;
+        } catch (e) { return false; }
+      };
+
+      const deleteUser = async (adminUser, targetUserId) => {
+        if (adminUser.role !== 'admin') return false;
+        try {
+          const { data: userRow } = await supabase.from('users').select('data').eq('id', targetUserId).single();
+          if (!userRow) return false;
+          const targetUser = userRow.data;
+
+          if (targetUser.username === 'MayconD' || targetUserId === adminUser.id) return false;
+
+          const { error } = await supabase.from('users').delete().eq('id', targetUserId);
+          if (error) throw error;
+
+          await addLog(adminUser.username, 'DELETAR_USUARIO', `Deletou usuário: ${targetUser.username}`);
+          return true;
+        } catch (e) { return false; }
+      };
+
+      const addLog = async (username, action, details) => {
+        try {
+          const newLog = { id: crypto.randomUUID(), timestamp: new Date().toISOString(), username, action, details };
+          await supabase.from('logs').insert({ id: newLog.id, data: newLog });
+        } catch (e) { console.error(e); }
+      };
+
+      const getLogs = async () => {
+        try {
+          const { data, error } = await supabase.from('logs').select('data').order('created_at', { ascending: false }).limit(100);
+          if (error) throw error;
+          return data.map(row => row.data);
+        } catch (e) { return []; }
+      };
+
+      // --- 3. UTILS - PDF GENERATOR ---
+      const generateGlobalPDF = (insp) => {
+        const content = `
+          <div style="font-family: Arial, sans-serif; padding: 20px; color: #000; width: 100%; max-width: 800px; margin: 0 auto; background: white;">
+            <!-- Header -->
+            <div style="border-bottom: 3px solid #000; padding-bottom: 10px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+               <div>
+                 <h1 style="font-size: 22px; font-weight: 900; text-transform: uppercase; margin: 0; letter-spacing: 1px;">${COMPANY_NAME}</h1>
+                 <p style="font-size: 12px; margin: 2px 0 0 0; text-transform: uppercase;">Relatório Técnico de Vistoria Veicular</p>
+               </div>
+               <div style="text-align: right; font-size: 10px;">
+                 <p style="margin: 0;"><strong>DATA:</strong> ${new Date(insp.date).toLocaleString()}</p>
+                 <p style="margin: 2px 0 0 0;"><strong>ID:</strong> ${insp.id ? insp.id.substring(0,8) : 'N/A'}</p>
+               </div>
+            </div>
+
+            <!-- Vehicle Info -->
+            <div style="border: 1px solid #000; padding: 10px; margin-bottom: 15px;">
+              <h3 style="background: #000; color: #fff; padding: 3px 8px; font-size: 11px; font-weight: bold; text-transform: uppercase; display: inline-block; margin-top: -18px;">Dados do Veículo</h3>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 10px; margin-top: 5px;">
+                 <div style="border-bottom: 1px dotted #999; padding-bottom: 2px;"><strong>PLACA:</strong> ${insp.plate}</div>
+                 <div style="border-bottom: 1px dotted #999; padding-bottom: 2px;"><strong>KM:</strong> ${insp.mileage}</div>
+                 <div style="border-bottom: 1px dotted #999; padding-bottom: 2px;"><strong>VEÍCULO:</strong> ${insp.vehicle}</div>
+                 <div style="border-bottom: 1px dotted #999; padding-bottom: 2px;"><strong>CONTRATO:</strong> ${insp.contractNumber}</div>
+                 <div style="border-bottom: 1px dotted #999; padding-bottom: 2px;"><strong>CLIENTE:</strong> ${insp.clientName}</div>
+                 <div style="border-bottom: 1px dotted #999; padding-bottom: 2px;"><strong>EMAIL:</strong> ${insp.clientEmail}</div>
+                 <div style="border-bottom: 1px dotted #999; padding-bottom: 2px; grid-column: span 2;"><strong>VISTORIADOR:</strong> ${insp.inspector || insp.savedBy}</div>
+              </div>
+            </div>
+
+            <!-- Checklist & Tires -->
+            <div style="display: flex; gap: 15px; margin-bottom: 15px;">
+               <!-- Checklist -->
+               <div style="flex: 1; border: 1px solid #000; padding: 10px;">
+                  <h3 style="background: #000; color: #fff; padding: 3px 8px; font-size: 11px; font-weight: bold; text-transform: uppercase; display: inline-block; margin-top: -18px;">Checklist</h3>
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; font-size: 9px; margin-top: 5px;">
+                     ${Object.entries(insp.checklist).map(([k,v]) => `
+                        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #eee;">
+                          <span>${k}</span>
+                          <span style="font-weight: bold;">${v==='good'?'OK':v==='bad'?'RUIM':v==='damaged'?'AVARIA':'N/A'}</span>
+                        </div>
+                     `).join('')}
+                  </div>
+               </div>
+               
+               <!-- Tires & Fuel -->
+               <div style="width: 35%; border: 1px solid #000; padding: 10px;">
+                  <h3 style="background: #000; color: #fff; padding: 3px 8px; font-size: 11px; font-weight: bold; text-transform: uppercase; display: inline-block; margin-top: -18px;">Pneus & Comb.</h3>
+                  <div style="font-size: 9px; margin-top: 5px;">
+                     <p style="margin-bottom: 5px;"><strong>COMBUSTÍVEL:</strong> ${insp.fuelLevel}%</p>
+                     <div style="display: grid; gap: 3px;">
+                        ${Object.entries(insp.tires).map(([k,v]) => `<div style="border-bottom: 1px solid #eee;"><strong>${k.toUpperCase()}:</strong> ${v||'-'}</div>`).join('')}
+                     </div>
+                  </div>
+               </div>
+            </div>
+
+             <!-- Observations -->
+             <div style="border: 1px solid #000; padding: 10px; margin-bottom: 15px;">
+              <h3 style="background: #000; color: #fff; padding: 3px 8px; font-size: 11px; font-weight: bold; text-transform: uppercase; display: inline-block; margin-top: -18px;">Observações</h3>
+              <div style="font-size: 10px; margin-top: 5px;">
+                <p><strong>GERAL:</strong> ${insp.observation || 'Nenhuma'}</p>
+                <p><strong>RETIRADOS:</strong> ${insp.removedItems || 'Nenhum'}</p>
+                <p><strong>COLETA:</strong> ${insp.collectionObservation || 'Nenhuma'}</p>
+              </div>
+            </div>
+
+            <!-- Photos -->
+            <div style="border: 1px solid #000; padding: 10px; margin-bottom: 15px; page-break-inside: avoid;">
+              <h3 style="background: #000; color: #fff; padding: 3px 8px; font-size: 11px; font-weight: bold; text-transform: uppercase; display: inline-block; margin-top: -18px;">Registro Fotográfico</h3>
+              <div style="display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px;">
+                 ${Object.entries(insp.photos).map(([k,v]) => v ? `
+                    <div style="width: 23%; border: 1px solid #ccc;">
+                       <img src="${v}" style="width: 100%; height: 80px; object-fit: cover; filter: grayscale(100%); display: block;">
+                       <div style="font-size: 7px; text-align: center; padding: 2px; font-weight: bold; text-transform: uppercase;">${k}</div>
+                    </div>
+                 ` : '').join('')}
+              </div>
+            </div>
+
+            <!-- Signatures -->
+            <div style="margin-top: 20px; display: flex; justify-content: space-between; page-break-inside: avoid;">
+               <div style="width: 45%; text-align: center;">
+                   ${insp.inspectorSignature ? `<img src="${insp.inspectorSignature}" style="height: 50px; margin: 0 auto;">` : '<div style="height:50px;"></div>'}
+                   <div style="border-top: 1px solid #000; font-size: 9px; padding-top: 5px;"><strong>VISTORIADOR:</strong> ${insp.inspector}</div>
+               </div>
+               <div style="width: 45%; text-align: center;">
+                   ${insp.clientSignature ? `<img src="${insp.clientSignature}" style="height: 50px; margin: 0 auto;">` : '<div style="height:50px;"></div>'}
+                   <div style="border-top: 1px solid #000; font-size: 9px; padding-top: 5px;"><strong>CLIENTE/RESPONSÁVEL:</strong> ${insp.clientName}</div>
+               </div>
+            </div>
+          </div>
+        `;
+        
+        const element = document.createElement('div');
+        element.innerHTML = content;
+        
+        const opt = {
+          margin: 5,
+          filename: `Vistoria_${insp.plate}_${insp.id.substring(0,6)}.pdf`,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        };
+        
+        html2pdf().set(opt).from(element).save();
+      };
+
+      // --- 4. COMPONENTES ---
+
+      // Componente: SignaturePad
+      const SignaturePad = ({ label, onSave, initialData }) => {
+        const canvasRef = useRef(null);
+        const [isDrawing, setIsDrawing] = useState(false);
+
+        useEffect(() => {
+          const canvas = canvasRef.current;
+          if (canvas) {
+            canvas.width = canvas.offsetWidth;
+            canvas.height = 200;
+            const ctx = canvas.getContext('2d');
+            ctx.lineWidth = 2;
+            ctx.lineCap = 'round';
+            ctx.strokeStyle = '#000000';
+            if (initialData) {
+              const img = new Image();
+              img.onload = () => ctx.drawImage(img, 0, 0);
+              img.src = initialData;
+            }
+          }
+        }, []);
+
+        const getCoordinates = (event) => {
+          const canvas = canvasRef.current;
+          if (!canvas) return { x: 0, y: 0 };
+          const rect = canvas.getBoundingClientRect();
+          let clientX, clientY;
+          if ('touches' in event) {
+            clientX = event.touches[0].clientX;
+            clientY = event.touches[0].clientY;
+          } else {
+            clientX = event.clientX;
+            clientY = event.clientY;
+          }
+          return { x: clientX - rect.left, y: clientY - rect.top };
+        };
+
+        const startDrawing = (e) => {
+          e.preventDefault();
+          setIsDrawing(true);
+          const { x, y } = getCoordinates(e);
+          const ctx = canvasRef.current?.getContext('2d');
+          ctx?.beginPath();
+          ctx?.moveTo(x, y);
+        };
+
+        const draw = (e) => {
+          e.preventDefault();
+          if (!isDrawing) return;
+          const { x, y } = getCoordinates(e);
+          const ctx = canvasRef.current?.getContext('2d');
+          if (ctx) {
+            ctx.lineTo(x, y);
+            ctx.stroke();
+          }
+        };
+
+        const stopDrawing = () => {
+          if (isDrawing) {
+            setIsDrawing(false);
+            const canvas = canvasRef.current;
+            if (canvas) onSave(canvas.toDataURL());
+          }
+        };
+
+        const clear = () => {
+          const canvas = canvasRef.current;
+          const ctx = canvas?.getContext('2d');
+          if (canvas && ctx) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            onSave('');
+          }
+        };
+
+        return (
+          <div className="w-full">
+            <div className="flex justify-between items-center mb-2">
+              <label className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                <PenTool className="w-4 h-4" /> {label}
+              </label>
+              <button onClick={clear} className="text-xs text-black flex items-center gap-1 hover:bg-gray-100 px-2 py-1 rounded border border-gray-300">
+                <Eraser className="w-3 h-3" /> Limpar
+              </button>
+            </div>
+            <div className="border-2 border-dashed border-gray-300 rounded-lg bg-white overflow-hidden touch-none">
+              <canvas ref={canvasRef} className="w-full cursor-crosshair"
+                onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
+                onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing}
+              />
+            </div>
+          </div>
+        );
+      };
+
+      // Componente: Login
+      const Login = ({ onLogin }) => {
+        const [username, setUsername] = useState('');
+        const [password, setPassword] = useState('');
+        const [error, setError] = useState('');
+        const [loading, setLoading] = useState(false);
+
+        const handleSubmit = async (e) => {
+          e.preventDefault();
+          setError('');
+          setLoading(true);
+          try {
+            const user = await loginUser(username, password);
+            if (user) onLogin(user);
+            else setError('Credenciais inválidas.');
+          } catch { setError('Erro de conexión.'); } 
+          finally { setLoading(false); }
+        };
+
+        return (
+          <div className="min-h-screen bg-white flex items-center justify-center p-4">
+            <div className="bg-white p-6 sm:p-8 border border-black w-full max-w-md shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+              <div className="flex flex-col items-center mb-8">
+                <div className="w-16 h-16 bg-black rounded-full flex items-center justify-center mb-4">
+                  <ShieldCheck className="w-8 h-8 text-white" />
+                </div>
+                <h1 className="text-xl font-bold text-black uppercase tracking-widest text-center">{COMPANY_NAME}</h1>
+                <p className="text-gray-500 text-sm uppercase mt-1">Acesso Restrito</p>
+              </div>
+              <form onSubmit={handleSubmit} className="space-y-6">
+                <div>
+                  <label className="block text-xs font-bold uppercase mb-1">Usuário</label>
+                  <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} 
+                    className="block w-full p-3 border border-black rounded-none focus:outline-none focus:ring-1 focus:ring-black" required />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold uppercase mb-1">Senha</label>
+                  <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} 
+                    className="block w-full p-3 border border-black rounded-none focus:outline-none focus:ring-1 focus:ring-black" required />
+                </div>
+                {error && <div className="text-black text-xs font-bold border border-black p-2 bg-gray-100 text-center uppercase">{error}</div>}
+                <button type="submit" disabled={loading} 
+                  className="w-full py-3 bg-black text-white font-bold uppercase hover:bg-gray-800 transition-colors disabled:bg-gray-400">
+                  {loading ? 'Verificando...' : 'Entrar'}
+                </button>
+              </form>
+            </div>
+          </div>
+        );
+      };
+
+      // Componente: UserSettings
+      const UserSettings = ({ user, onClose }) => {
+        const [oldPassword, setOldPassword] = useState('');
+        const [newPassword, setNewPassword] = useState('');
+        const [confirmPassword, setConfirmPassword] = useState('');
+        const [message, setMessage] = useState(null);
+        const [loading, setLoading] = useState(false);
+
+        const handleSubmit = async (e) => {
+          e.preventDefault();
+          if (newPassword !== confirmPassword) return setMessage({ type: 'error', text: 'As senhas não coincidem.' });
+          setLoading(true);
+          const result = await changePassword(user, oldPassword, newPassword);
+          setLoading(false);
+          setMessage({ type: result.success ? 'success' : 'error', text: result.message });
+          if (result.success) setTimeout(onClose, 1500);
+        };
+
+        return (
+          <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+            <div className="bg-white w-full max-w-md border border-white animate-fade-in">
+              <div className="bg-black p-4 flex justify-between items-center text-white border-b border-white">
+                <h2 className="font-bold uppercase text-sm flex items-center gap-2"><Lock className="w-4 h-4" /> Configurar Senha</h2>
+                <button onClick={onClose}><X className="w-6 h-6" /></button>
+              </div>
+              <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                <input type="password" placeholder="SENHA ATUAL" value={oldPassword} onChange={(e) => setOldPassword(e.target.value)} className="w-full p-3 border border-black text-sm uppercase" required />
+                <input type="password" placeholder="NOVA SENHA" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full p-3 border border-black text-sm uppercase" required />
+                <input type="password" placeholder="CONFIRMAR NOVA SENHA" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full p-3 border border-black text-sm uppercase" required />
+                {message && <div className={`p-2 text-xs font-bold uppercase border border-black text-center ${message.type === 'success' ? 'bg-gray-200 text-black' : 'bg-black text-white'}`}>{message.text}</div>}
+                <button type="submit" disabled={loading} className="w-full bg-black text-white py-3 font-bold uppercase hover:bg-gray-800 transition-colors disabled:opacity-50">
+                  {loading ? 'Salvando...' : 'Alterar Senha'}
+                </button>
+              </form>
+            </div>
+          </div>
+        );
+      };
+
+      // Componente: UserDetailsModal
+      const UserDetailsModal = ({ user, onClose, allInspections, allLogs }) => {
+        const [showPass, setShowPass] = useState(false);
+        const userInspections = allInspections.filter(i => i.savedBy === user.username);
+        const userLogs = allLogs.filter(l => l.username === user.username);
+        const lastLogin = userLogs.find(l => l.action === 'LOGIN');
+
+        return (
+          <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+            <div className="bg-white w-full max-w-3xl h-[80vh] flex flex-col border border-white animate-fade-in">
+              <div className="bg-black p-4 flex justify-between items-center text-white border-b border-white flex-none">
+                <h2 className="font-bold uppercase text-sm flex items-center gap-2"><User className="w-4 h-4" /> Ficha do Funcionário</h2>
+                <button onClick={onClose}><X className="w-6 h-6" /></button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-gray-50">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                   <div className="bg-white p-4 border border-black">
+                      <h3 className="font-bold uppercase text-xs border-b border-black pb-2 mb-2">Dados Pessoais</h3>
+                      <div className="space-y-2 text-sm">
+                         <p><span className="font-bold">NOME:</span> {user.name}</p>
+                         <p><span className="font-bold">USUÁRIO:</span> {user.username}</p>
+                         <p><span className="font-bold">FUNÇÃO:</span> <span className="bg-black text-white px-1 text-xs">{user.role === 'admin' ? 'ADMIN' : 'FUNC'}</span></p>
+                         <div className="flex items-center gap-2">
+                            <span className="font-bold">SENHA:</span> 
+                            <span className="font-mono bg-gray-200 px-1">{showPass ? user.password : '••••••'}</span>
+                            <button onClick={()=>setShowPass(!showPass)} className="text-xs underline">{showPass ? 'Ocultar' : 'Ver'}</button>
+                         </div>
+                      </div>
+                   </div>
+                   <div className="bg-white p-4 border border-black">
+                      <h3 className="font-bold uppercase text-xs border-b border-black pb-2 mb-2">Estatísticas</h3>
+                      <div className="space-y-2 text-sm">
+                         <p><span className="font-bold">VISTORIAS REALIZADAS:</span> {userInspections.length}</p>
+                         <p><span className="font-bold">ÚLTIMO ACESSO:</span> {lastLogin ? new Date(lastLogin.timestamp).toLocaleString() : 'Nunca'}</p>
+                      </div>
+                   </div>
+                </div>
+
+                <div className="bg-white border border-black">
+                   <h3 className="bg-black text-white p-2 font-bold uppercase text-xs">Histórico de Vistorias</h3>
+                   <div className="max-h-60 overflow-y-auto">
+                     {userInspections.length === 0 ? <p className="p-4 text-xs text-gray-500 uppercase">Nenhuma vistoria encontrada.</p> : (
+                       <table className="w-full text-left text-xs">
+                         <thead className="bg-gray-100 border-b border-black"><tr><th className="p-2">Data</th><th className="p-2">Placa</th><th className="p-2">Veículo</th></tr></thead>
+                         <tbody>
+                           {userInspections.map(i => (
+                             <tr key={i.id} className="border-b border-gray-100">
+                               <td className="p-2">{new Date(i.date).toLocaleDateString()} {new Date(i.date).toLocaleTimeString()}</td>
+                               <td className="p-2 font-bold">{i.plate}</td>
+                               <td className="p-2 uppercase">{i.vehicle}</td>
+                             </tr>
+                           ))}
+                         </tbody>
+                       </table>
+                     )}
+                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      // Componente: TabInitial
+      const TabInitial = ({ data, updateData, updateNestedData }) => {
+        const InputField = ({ label, value, onChange, icon: Icon, type = "text", placeholder = "" }) => (
+          <div className="mb-4">
+            <label className="block text-xs font-bold text-gray-500 uppercase mb-1">{label}</label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Icon className="h-4 w-4 text-black" />
+              </div>
+              {type === 'textarea' ? (
+                <textarea rows={3} className="block w-full pl-10 text-sm border-gray-300 rounded-none border focus:ring-black focus:border-black p-2" value={value} onChange={onChange} placeholder={placeholder} />
+              ) : (
+                <input type={type} className="block w-full pl-10 text-sm border-gray-300 rounded-none border focus:ring-black focus:border-black p-2" value={value} onChange={onChange} placeholder={placeholder} />
+              )}
+            </div>
+          </div>
+        );
+
+        return (
+          <div className="p-4 space-y-6 pb-24">
+            <div className="bg-white p-4 border border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+              <h2 className="text-sm font-bold text-black uppercase mb-4 flex items-center"><Hash className="w-4 h-4 mr-2" /> Contrato</h2>
+              <InputField label="Número do Contrato" value={data.contractNumber} onChange={(e) => updateData('contractNumber', e.target.value)} icon={Hash} />
+              <InputField label="Vistoriador" value={data.inspector} onChange={(e) => updateData('inspector', e.target.value)} icon={User} placeholder="Nome da Empresa" />
+            </div>
+            <div className="bg-white p-4 border border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+              <h2 className="text-sm font-bold text-black uppercase mb-4 flex items-center"><Truck className="w-4 h-4 mr-2" /> Veículo</h2>
+              <div className="grid grid-cols-2 gap-4">
+                <InputField label="PLACA" value={data.plate} onChange={(e) => updateData('plate', e.target.value.toUpperCase())} icon={Truck} placeholder="AAA-0000" />
+                <InputField label="KM Atual" value={data.mileage} onChange={(e) => updateData('mileage', e.target.value)} icon={Activity} type="number" />
+              </div>
+              <InputField label="Veículo (Modelo/Cor)" value={data.vehicle} onChange={(e) => updateData('vehicle', e.target.value)} icon={Truck} />
+              <InputField label="Nome do Cliente" value={data.clientName} onChange={(e) => updateData('clientName', e.target.value)} icon={User} />
+              <InputField label="E-mail" value={data.clientEmail} onChange={(e) => updateData('clientEmail', e.target.value)} icon={Mail} type="email" />
+            </div>
+            <div className="bg-white p-4 border border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+              <h2 className="text-sm font-bold text-black uppercase mb-4 flex items-center"><ClipboardList className="w-4 h-4 mr-2" /> Detalhes</h2>
+              <InputField label="Pertences Retirados" value={data.removedItems} onChange={(e) => updateData('removedItems', e.target.value)} icon={AlertCircle} type="textarea" />
+              <InputField label="Observação" value={data.observation} onChange={(e) => updateData('observation', e.target.value)} icon={FileText} type="textarea" />
+              <InputField label="Observação Coleta" value={data.collectionObservation} onChange={(e) => updateData('collectionObservation', e.target.value)} icon={FileText} type="textarea" />
+            </div>
+          </div>
+        );
+      };
+
+      // Componente: TabQuestionnaire
+      const TabQuestionnaire = ({ data, updateNestedData }) => {
+        const [currentTime, setCurrentTime] = useState(new Date().toLocaleString());
+        useEffect(() => { const t = setInterval(() => setCurrentTime(new Date().toLocaleString('pt-BR')), 1000); return () => clearInterval(t); }, []);
+        const completedCount = Object.values(data.checklist).filter(v => v !== undefined && v !== null).length;
+
+        const StatusButton = ({ status, current, onClick, icon: Icon }) => {
+          const isSelected = current === status;
+          return (
+            <button onClick={onClick} className={`p-2 border transition-all ${isSelected ? "bg-black text-white border-black" : "bg-white text-gray-400 border-gray-200"}`}>
+              <Icon className="w-5 h-5" />
+            </button>
+          );
+        };
+
+        return (
+          <div className="p-4 space-y-6 pb-24">
+            <div className="border border-black p-3 text-center bg-gray-50"><p className="text-xs uppercase tracking-widest text-gray-500 mb-1">Data e Hora</p><p className="text-lg font-bold font-mono">{currentTime}</p></div>
+            <div className="flex justify-between items-end border-b-2 border-black pb-2"><h3 className="font-bold text-xl uppercase">Checklist</h3><span className="text-sm font-bold">{completedCount} / {INITIAL_CHECKLIST_ITEMS.length}</span></div>
+            <div className="space-y-4">
+              {INITIAL_CHECKLIST_ITEMS.map((item) => (
+                <div key={item} className="bg-white pb-4 border-b border-gray-100">
+                  <p className="font-bold text-sm uppercase mb-3">{item}</p>
+                  <div className="grid grid-cols-4 gap-3">
+                    <StatusButton status="good" current={data.checklist[item]} onClick={() => updateNestedData('checklist', item, 'good')} icon={ThumbsUp} />
+                    <StatusButton status="bad" current={data.checklist[item]} onClick={() => updateNestedData('checklist', item, 'bad')} icon={ThumbsDown} />
+                    <StatusButton status="damaged" current={data.checklist[item]} onClick={() => updateNestedData('checklist', item, 'damaged')} icon={AlertTriangle} />
+                    <StatusButton status="na" current={data.checklist[item]} onClick={() => updateNestedData('checklist', item, 'na')} icon={Slash} />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="bg-white pt-4 border-t-2 border-black">
+              <h3 className="font-bold text-lg uppercase mb-6 flex items-center"><Fuel className="w-5 h-5 mr-2"/> Combustível</h3>
+              <div className="relative pt-6 pb-2 px-2">
+                <div className="h-2 bg-gradient-to-r from-gray-300 via-gray-500 to-black rounded-full w-full"></div>
+                <input type="range" min="0" max="100" value={data.fuelLevel} onChange={(e) => updateNestedData('fuelLevel', 'value', parseInt(e.target.value))} className="absolute top-5 left-0 w-full h-6 opacity-0 cursor-pointer z-10" />
+                <div className="absolute top-1 w-3 h-8 bg-black border border-white shadow-lg" style={{ left: `calc(${data.fuelLevel}% - 6px)` }}></div>
+                <div className="flex justify-between text-xs font-bold mt-4 text-gray-500 font-mono"><span>VAZIO</span><span>1/2</span><span>CHEIO</span></div>
+                <div className="text-center mt-2 font-mono font-bold text-xl">{data.fuelLevel}%</div>
+              </div>
+            </div>
+            <div className="bg-white pt-4 border-t-2 border-black">
+              <h3 className="font-bold text-lg uppercase mb-6 flex items-center"><Disc className="w-5 h-5 mr-2"/> Pneus</h3>
+              <div className="space-y-4">
+                {[{k:'fl',l:'Dianteiro Esq'},{k:'fr',l:'Dianteiro Dir'},{k:'rl',l:'Traseiro Esq'},{k:'rr',l:'Traseiro Dir'},{k:'spare',l:'Estepe'}].map(t => (
+                  <div key={t.k}><label className="text-xs font-bold text-gray-500 uppercase mb-1">{t.l}</label>
+                    <select className="block w-full border-gray-300 rounded-none border bg-white p-2 text-sm" value={data.tires[t.k]} onChange={(e) => updateNestedData('tires', t.k, e.target.value)}>
+                      <option value="">Selecione...</option><option value="Bom">Bom</option><option value="Regular">Regular</option><option value="Ruim">Ruim</option><option value="Careca">Careca</option>
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      // Componente: TabPhotos
+      const TabPhotos = ({ data, updateNestedData }) => {
+        const handlePhotoUpload = (photoType, event) => {
+          if (event.target.files && event.target.files[0]) {
+            const reader = new FileReader();
+            reader.onloadend = () => updateNestedData('photos', photoType, reader.result);
+            reader.readAsDataURL(event.target.files[0]);
+          }
+        };
+        const completedPhotos = MANDATORY_PHOTOS.filter(p => data.photos[p]).length;
+
+        return (
+          <div className="p-4 space-y-6 pb-24">
+            <div className="flex justify-between items-end border-b-2 border-black pb-2"><h2 className="text-xl font-bold uppercase">Fotos</h2><span className="text-sm font-bold bg-black text-white px-2 py-1">{completedPhotos} / 8</span></div>
+            <div className="grid grid-cols-2 gap-4">
+              {MANDATORY_PHOTOS.map((photoType) => (
+                <div key={photoType} className="bg-white border border-gray-300 flex flex-col h-48 relative">
+                  <div className="relative flex-1 bg-gray-50 flex items-center justify-center overflow-hidden">
+                    {data.photos[photoType] ? (
+                      <><img src={data.photos[photoType]} className="w-full h-full object-cover grayscale" /><div className="absolute top-2 right-2 bg-black text-white rounded-full p-1"><CheckCircle className="w-4 h-4" /></div></>
+                    ) : <Camera className="w-8 h-8 text-gray-300" />}
+                  </div>
+                  <div className="p-2 border-t border-gray-200">
+                    <p className="text-[10px] font-bold uppercase mb-2 truncate">{photoType}</p>
+                    <div className="flex gap-2">
+                      <label className="flex-1 flex items-center justify-center p-2 cursor-pointer bg-black text-white hover:bg-gray-800">
+                        <Camera className="w-4 h-4" />
+                        <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => handlePhotoUpload(photoType, e)} />
+                      </label>
+                      {data.photos[photoType] && (
+                        <button onClick={() => updateNestedData('photos', photoType, undefined)} className="p-2 bg-white border border-gray-300 text-black hover:bg-gray-100"><Trash2 className="w-4 h-4" /></button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="p-4 border border-black bg-gray-50 text-sm text-black"><p className="flex items-center gap-2"><span className="font-bold uppercase">Nota:</span> Foto do Painel: LIGAR MEIA CHAVE.</p></div>
+          </div>
+        );
+      };
+
+      // Componente: TabSave
+      const TabSave = ({ data, updateData, onSave, onDiscard }) => {
+        const missingPhotos = MANDATORY_PHOTOS.filter(p => !data.photos[p]);
+        const hasSignatures = data.inspectorSignature && data.clientSignature;
+        const isComplete = missingPhotos.length === 0 && data.contractNumber && data.plate && hasSignatures;
+        const isUpdating = !!data.id;
+
+        return (
+          <div className="p-6 pb-24 flex flex-col items-center justify-center min-h-[60vh] space-y-8">
+            <div className="text-center space-y-2">
+              <div className="w-20 h-20 bg-black text-white rounded-full flex items-center justify-center mx-auto mb-4">
+                {isComplete ? <CheckCircle2 className="w-10 h-10" /> : <AlertTriangle className="w-10 h-10" />}
+              </div>
+              <h2 className="text-2xl font-bold uppercase">{isUpdating ? 'Atualizar Vistoria' : 'Finalizar'}</h2>
+            </div>
+            <div className="w-full space-y-6">
+              <SignaturePad label="Assinatura do Vistoriador" onSave={(sig) => updateData('inspectorSignature', sig)} initialData={data.inspectorSignature} />
+              <SignaturePad label="Assinatura do Cliente" onSave={(sig) => updateData('clientSignature', sig)} initialData={data.clientSignature} />
+            </div>
+            {!isComplete && (
+              <div className="w-full bg-white text-black p-4 text-xs border-2 border-black">
+                <p className="font-bold mb-2 uppercase flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> Pendências:</p>
+                <ul className="list-disc list-inside uppercase">
+                    {!data.contractNumber && <li>Número do contrato</li>}
+                    {!data.plate && <li>Placa do veículo</li>}
+                    {missingPhotos.length > 0 && <li>{missingPhotos.length} fotos faltando</li>}
+                    {!hasSignatures && <li>Assinaturas obrigatórias</li>}
+                </ul>
+              </div>
+            )}
+            <div className="w-full space-y-4 pt-4">
+              <button onClick={onSave} disabled={!isComplete} className={`w-full flex items-center justify-center py-4 text-lg font-bold uppercase border-2 ${isComplete ? 'bg-black text-white border-black' : 'bg-gray-100 text-gray-400 border-gray-200'}`}>
+                {isUpdating ? <RefreshCw className="w-5 h-5 mr-2" /> : <Save className="w-5 h-5 mr-2" />} {isUpdating ? 'Atualizar' : 'Salvar'}
+              </button>
+              <button onClick={onDiscard} className="w-full flex items-center justify-center py-4 bg-white border-2 border-black text-black text-lg font-bold uppercase hover:bg-gray-50">
+                <Trash2 className="w-5 h-5 mr-2" /> {isUpdating ? 'Cancelar' : 'Descartar'}
+              </button>
+            </div>
+          </div>
+        );
+      };
+
+      // Componente: TabHistory (AHORA CON BOTÓN PDF)
+      const TabHistory = ({ currentUser, onEdit }) => {
+        const [inspections, setInspections] = useState([]);
+        const [now, setNow] = useState(new Date());
+        const [loading, setLoading] = useState(true);
+
+        const fetchInspections = async () => {
+          setLoading(true);
+          const data = await getUserInspections(currentUser.username);
+          setInspections(data);
+          setLoading(false);
+        };
+
+        useEffect(() => {
+          fetchInspections();
+          const timer = setInterval(() => setNow(new Date()), 60000);
+          return () => clearInterval(timer);
+        }, [currentUser]);
+
+        const isEditable = (dateStr) => (now.getTime() - new Date(dateStr).getTime()) / 36e5 < 1;
+
+        return (
+          <div className="p-4 space-y-4 pb-24">
+            <div className="flex justify-between items-center mb-4"><h2 className="text-xl font-bold flex items-center gap-2"><History className="w-6 h-6" /> Histórico</h2><button onClick={fetchInspections}><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button></div>
+            {loading ? <div className="text-center py-10 uppercase text-xs font-bold">Carregando...</div> : inspections.length === 0 ? <div className="text-center py-10 border border-gray-200 text-gray-500 uppercase text-xs">Sem registros</div> : (
+              <div className="space-y-4">
+                {inspections.map((insp) => (
+                  <div key={insp.id} className="bg-white p-4 border border-black shadow-sm">
+                    <div className="flex justify-between items-start mb-2"><div><h3 className="font-bold text-lg">{insp.plate}</h3><p className="text-xs uppercase text-gray-500">{insp.vehicle}</p></div><span className="text-xs font-mono">{new Date(insp.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div>
+                    <div className="flex items-center justify-between mt-4">
+                      <div className="text-xs">{isEditable(insp.date) ? <span className="text-black font-bold flex items-center gap-1 bg-gray-200 px-2 py-1"><RefreshCw className="w-3 h-3" /> Editável</span> : <span className="text-gray-400 flex items-center gap-1 border border-gray-200 px-2 py-1"><CheckCircle className="w-3 h-3" /> Finalizado</span>}</div>
+                      <div className="flex gap-2">
+                        <button onClick={() => generateGlobalPDF(insp)} className="flex items-center gap-2 bg-white text-black border border-black px-4 py-2 text-xs font-bold uppercase hover:bg-gray-100"><Download className="w-4 h-4" /> PDF</button>
+                        {isEditable(insp.date) && <button onClick={() => onEdit(insp)} className="flex items-center gap-2 bg-black text-white px-4 py-2 text-xs font-bold uppercase">Modificar</button>}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      };
+
+      // Componente: AdminDashboard
+      const AdminDashboard = ({ currentUser, onLogout }) => {
+        const [activeTab, setActiveTab] = useState('inspections');
+        const [dataState, setDataState] = useState({ inspections: [], users: [], logs: [] });
+        const [loading, setLoading] = useState(false);
+        const [searchTerm, setSearchTerm] = useState('');
+        
+        // Passwords visibility in table
+        const [visiblePasswords, setVisiblePasswords] = useState({});
+
+        // User profile modal
+        const [selectedUserProfile, setSelectedUserProfile] = useState(null);
+
+        // User creation state
+        const [newUserOpen, setNewUserOpen] = useState(false);
+        const [newUser, setNewUser] = useState({ name: '', username: '', password: '', role: 'employee' });
+
+        const refreshData = async () => {
+          setLoading(true);
+          const [inspections, users, logs] = await Promise.all([getInspections(), getUsers(), getLogs()]);
+          setDataState({ inspections, users, logs });
+          setLoading(false);
+        };
+
+        useEffect(() => { refreshData(); }, []);
+
+        const filteredInspections = dataState.inspections.filter(i => i.plate.toLowerCase().includes(searchTerm.toLowerCase()));
+
+        const handleCreateUser = async (e) => {
+          e.preventDefault();
+          if (!newUser.password || newUser.password.trim() === "") {
+             alert("A senha é obrigatória!");
+             return;
+          }
+          const u = { id: crypto.randomUUID(), ...newUser };
+          if (await createUser(currentUser, u)) {
+             setNewUserOpen(false); setNewUser({ name: '', username: '', password: '', role: 'employee' }); alert('Usuário criado!'); refreshData();
+          } else alert('Erro ao criar usuário (Verifique se o login já existe).');
+        };
+
+        const handleDeleteUser = async (uid) => {
+           if (confirm('Excluir usuário?')) { await deleteUser(currentUser, uid); refreshData(); }
+        };
+
+        const togglePasswordVisibility = (uid) => {
+          setVisiblePasswords(prev => ({...prev, [uid]: !prev[uid]}));
+        };
+
+        return (
+          <div className="h-full flex flex-col bg-white">
+            {selectedUserProfile && <UserDetailsModal user={selectedUserProfile} onClose={() => setSelectedUserProfile(null)} allInspections={dataState.inspections} allLogs={dataState.logs} />}
+            <header className="bg-black text-white p-4 flex justify-between items-center">
+              <div className="flex items-center gap-3"><ShieldCheck className="w-6 h-6" /><div><h1 className="text-sm sm:text-lg font-bold uppercase tracking-widest truncate max-w-[200px] sm:max-w-none">{COMPANY_NAME}</h1></div></div>
+              <button onClick={onLogout} className="bg-white text-black px-4 py-2 text-xs font-bold uppercase">Sair</button>
+            </header>
+            <div className="border-b border-black flex overflow-x-auto no-scrollbar">
+              {['inspections', 'users', 'logs'].map(tab => (
+                 <button key={tab} onClick={() => setActiveTab(tab)} className={`px-6 py-4 font-bold uppercase text-xs border-b-4 flex-shrink-0 ${activeTab === tab ? 'border-black text-black' : 'border-transparent text-gray-400'}`}>{tab === 'inspections' ? 'Vistorias' : tab === 'users' ? 'Usuários' : 'Logs'}</button>
+              ))}
+              <button onClick={refreshData} className="ml-auto p-4"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
+            </div>
+            <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+              {activeTab === 'inspections' && (
+                <div className="space-y-4">
+                  <div className="flex gap-2 mb-4"><input placeholder="BUSCAR PLACA..." value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} className="border border-black p-2 flex-1 text-xs uppercase" /></div>
+                  {filteredInspections.map(i => (
+                    <div key={i.id} className="border border-black p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                       <div><h3 className="font-bold text-lg">{i.plate}</h3><p className="text-xs uppercase">{i.vehicle}</p></div>
+                       <div className="flex gap-2 w-full sm:w-auto">
+                         <button onClick={() => generateGlobalPDF(i)} className="bg-black text-white px-3 py-2 sm:py-1 text-xs font-bold uppercase flex-1 sm:flex-none">PDF</button>
+                         <button onClick={() => deleteInspection(currentUser, i.id).then(refreshData)} className="border border-black px-3 py-2 sm:py-1 text-xs font-bold uppercase flex-none">X</button>
+                       </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {activeTab === 'users' && (
+                <div>
+                   <button onClick={() => setNewUserOpen(!newUserOpen)} className="bg-black text-white px-4 py-2 text-xs font-bold uppercase mb-4 w-full sm:w-auto">Novo Usuário</button>
+                   {newUserOpen && <div className="border border-black p-4 mb-4 bg-gray-50 grid gap-2">
+                      <input placeholder="Nome" className="border border-black p-2" onChange={e=>setNewUser({...newUser, name: e.target.value})} />
+                      <input placeholder="Usuário (Login)" className="border border-black p-2" onChange={e=>setNewUser({...newUser, username: e.target.value})} />
+                      <input placeholder="Senha (Obrigatório)" className="border border-black p-2" required onChange={e=>setNewUser({...newUser, password: e.target.value})} />
+                      <button onClick={handleCreateUser} className="bg-black text-white p-2 text-xs font-bold uppercase">Salvar</button>
+                   </div>}
+                   <div className="overflow-x-auto">
+                     <table className="w-full text-left border border-black min-w-[500px]">
+                       <thead className="bg-black text-white text-xs uppercase"><tr><th className="p-2">User</th><th className="p-2">Nome</th><th className="p-2">Senha</th><th className="p-2">Role</th><th className="p-2">Action</th></tr></thead>
+                       <tbody>{dataState.users.map(u => (
+                         <tr key={u.id} className="border-b border-gray-200 text-xs">
+                           <td className="p-2 font-bold">{u.username}</td>
+                           <td className="p-2">{u.name}</td>
+                           <td className="p-2">
+                             <div className="flex items-center gap-2">
+                               <span className="font-mono">{visiblePasswords[u.id] ? u.password : '••••••'}</span>
+                               <button onClick={() => togglePasswordVisibility(u.id)}><Eye className="w-3 h-3 text-gray-500" /></button>
+                             </div>
+                           </td>
+                           <td className="p-2 uppercase">{u.role === 'admin' ? 'ADMIN' : 'FUNC'}</td>
+                           <td className="p-2 flex gap-2">
+                             <button onClick={() => setSelectedUserProfile(u)} className="bg-gray-100 border border-gray-300 px-2 py-1 font-bold">VER FICHA</button>
+                             {u.username !== 'MayconD' && <button onClick={() => handleDeleteUser(u.id)} className="text-red-600 font-bold ml-2">X</button>}
+                           </td>
+                         </tr>
+                       ))}</tbody>
+                     </table>
+                   </div>
+                </div>
+              )}
+              {activeTab === 'logs' && <div className="border border-black max-h-[500px] overflow-y-auto"><table className="w-full text-xs text-left"><thead className="bg-gray-100 sticky top-0"><tr><th className="p-2">Data</th><th className="p-2">User</th><th className="p-2">Ação</th></tr></thead><tbody>{dataState.logs.map(l => <tr key={l.id} className="border-b"><td className="p-2">{new Date(l.timestamp).toLocaleString()}</td><td className="p-2 font-bold">{l.username}</td><td className="p-2">{l.action}</td></tr>)}</tbody></table></div>}
+            </main>
+          </div>
+        );
+      };
+
+      // --- 4. APP PRINCIPAL ---
+      
+      const App = () => {
+        const [currentUser, setCurrentUser] = useState(null);
+        const [activeTab, setActiveTab] = useState(0);
+        const [data, setData] = useState(INITIAL_DATA);
+        const [isSaving, setIsSaving] = useState(false);
+        const [showSettings, setShowSettings] = useState(false);
+
+        useEffect(() => {
+          const user = getCurrentUser();
+          if (user) setCurrentUser(user);
+        }, []);
+
+        const updateData = (field, value) => setData(prev => ({ ...prev, [field]: value }));
+        const updateNestedData = (parent, key, value) => {
+          if (parent === 'fuelLevel') setData(prev => ({ ...prev, fuelLevel: value }));
+          else setData(prev => ({ ...prev, [parent]: { ...prev[parent], [key]: value } }));
+        };
+
+        const handleSave = async () => {
+          if (!currentUser) return;
+          setIsSaving(true);
+          try {
+            await saveInspection(data, currentUser);
+            alert("Sucesso!");
+            setData(INITIAL_DATA);
+            setActiveTab(4);
+          } catch (e) { alert("Erro: " + e.message); }
+          finally { setIsSaving(false); }
+        };
+
+        if (!currentUser) return <Login onLogin={setCurrentUser} />;
+        if (currentUser.role === 'admin') return <AdminDashboard currentUser={currentUser} onLogout={() => { logoutUser(); setCurrentUser(null); }} />;
+
+        const tabs = [
+          { icon: LayoutDashboard, label: 'Início' }, { icon: ClipboardList, label: 'Quest.' }, 
+          { icon: Camera, label: 'Fotos' }, { icon: Save, label: 'Salvar' }, { icon: History, label: 'Hist.' }
+        ];
+
+        return (
+          <div className="h-full flex flex-col font-sans relative">
+            {showSettings && <UserSettings user={currentUser} onClose={() => setShowSettings(false)} />}
+            <header className="bg-black text-white p-4 flex justify-between items-center z-20">
+              <h1 className="text-sm font-extrabold tracking-widest uppercase truncate max-w-[200px]">{COMPANY_NAME}</h1>
+              <div className="flex gap-2">
+                 <button onClick={() => setShowSettings(true)} className="border border-white p-1"><Settings className="w-4 h-4" /></button>
+                 <button onClick={() => { logoutUser(); setCurrentUser(null); }} className="bg-white text-black p-1"><LogOut className="w-4 h-4" /></button>
+              </div>
+            </header>
+            <main className="flex-1 overflow-y-auto pb-20">
+              {activeTab === 0 && <TabInitial data={data} updateData={updateData} updateNestedData={updateNestedData} />}
+              {activeTab === 1 && <TabQuestionnaire data={data} updateNestedData={updateNestedData} />}
+              {activeTab === 2 && <TabPhotos data={data} updateNestedData={updateNestedData} />}
+              {activeTab === 3 && (isSaving ? <div className="p-10 text-center font-bold animate-pulse">SALVANDO...</div> : <TabSave data={data} updateData={updateData} onSave={handleSave} onDiscard={() => setData(INITIAL_DATA)} />)}
+              {activeTab === 4 && <TabHistory currentUser={currentUser} onEdit={(insp) => { setData(insp); setActiveTab(0); }} />}
+            </main>
+            <nav className="fixed bottom-0 w-full bg-white border-t border-black flex justify-around pb-safe z-30">
+              {tabs.map((t, i) => {
+                const Icon = t.icon;
+                return <button key={i} onClick={() => setActiveTab(i)} className={`flex flex-col items-center p-3 w-full ${activeTab === i ? 'bg-gray-100 text-black font-bold' : 'text-gray-400'}`}><Icon className="w-6 h-6 mb-1" /><span className="text-[10px] uppercase">{t.label}</span></button>
+              })}
+            </nav>
+          </div>
+        );
+      };
+
+      const root = createRoot(document.getElementById('root'));
+      root.render(<App />);
+    </script>
+</body>
+</html>

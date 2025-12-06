@@ -1,0 +1,7 @@
+{
+  "name": "AutoCheck Vistoria",
+  "description": "Professional vehicle inspection application with checklist, photo management, and AI assistance.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
